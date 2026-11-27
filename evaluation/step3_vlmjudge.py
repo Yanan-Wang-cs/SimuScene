@@ -26,6 +26,8 @@ parser.add_argument(
     "--model",
     default="Qwen3-32B",
 )
+parser.add_argument("--per-video-errors", action="store_true",
+                    help="skip only a video OpenCV cannot open, instead of every video of that scenario")
 args = parser.parse_args()
 
 savejsonl = True
@@ -107,7 +109,7 @@ async def main():
     valid_question_num = 0
     Model_name = "Qwen/Qwen2.5-VL-72B-Instruct"
     index = 0
-    client = LLMClient(model=Model_name, timeout_seconds=10000, temperature=0.0)
+    client = None if savejsonl else LLMClient(model=Model_name, timeout_seconds=10000, temperature=0.0)
     # for i in range(0, 443, 1):
     for i in range(0, 25035, 1):
         folder_id = 0
@@ -136,14 +138,19 @@ async def main():
                 for vlmindex in range(len(after_verify['vlm_questions'])):
                     subquestion = after_verify['vlm_questions'][vlmindex]['question']
                     all_questions += f'{vlmindex+1}. {subquestion}\n'
-                    all_weight.append(after_verify['vlm_questions'][vlmindex]['weight'])
+                    all_weight.append(after_verify['vlm_questions'][vlmindex].get('weight', 1.0))
             except:
                 print(json_path)
 
             
             for video_name in os.listdir(video_folder):
-                new_width, new_height = get_size_opencv(f'{video_folder}/{video_name}')
-                new_width, new_height = resize_to_constraints(new_width, new_height)
+                try:
+                    new_width, new_height = resize_to_constraints(*get_size_opencv(f'{video_folder}/{video_name}'))
+                except (RuntimeError, ValueError) as e:
+                    if not args.per_video_errors:
+                        raise
+                    print('skip unreadable video:', f'{video_folder}/{video_name}', e)
+                    continue
                 input_message = prompt7(all_questions)
                 messages = [
                     {

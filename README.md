@@ -150,6 +150,16 @@ The pipeline uses two kinds of inference backends:
     and is NOT included here; it turns a *_vlm_*.jsonl request file into a
     *_responses.jsonl file using the served model.
 
+    Alternatively, evaluation/judge_vllm_offline.py does the same with vLLM
+    offline inference (no server or registry file needed):
+
+        python judge_vllm_offline.py --model-tag <MODEL> --tp 2
+
+    It extracts frames with qwen_vl_utils.process_vision_info, so sampling
+    follows each request (fps 5). Tested with vLLM 0.34 and qwen-vl-utils
+    0.0.14; if the default video reader fails on your machine, set
+    FORCE_QWENVL_VIDEO_READER=decord.
+
 
 --------------------------------------------------------------------------------
 4. DATA CONSTRUCTION PIPELINE
@@ -214,6 +224,25 @@ human_modify/val/video_<i>.json (regenerated from data/val.jsonl).
       save_video/<MODEL>/video_<id>/video_<id>_<k>.mp4
       code/<MODEL>/...          (the executed scripts)
       log/code_running_<MODEL>.txt, log/code_error_<MODEL>.txt
+    Optional flags (defaults reproduce the paper's protocol):
+      --allow-unfenced  if a response has no ```python block, run the whole
+                        response when it parses as Python (the prompt asks
+                        for "only the complete Python code", and some models
+                        answer with bare code)
+      --pass-stem       run each script inside its video folder and pass only
+                        the file stem as `name`, as the prompt describes; by
+                        default the full output path is passed
+      --retry-name-option
+                        when a script rejects the positional `name` with an
+                        argparse usage error (it declared `--name`), run it
+                        again with `--name <name>`; the prompt does not say
+                        how `name` is passed
+      --keep-pip-lines  by default every line containing `pip` is replaced
+                        by `pass`, which also hits lines such as
+                        `def ensure(import_name, pip_name):` and leaves the
+                        script invalid; with this flag the code is left as
+                        is and installs are blocked with PIP_NO_INDEX=1
+      --num-processes   worker count (default: 75% of CPU cores)
 
   Step 3 - VLM verification (Qwen2.5-VL-72B-Instruct)
       python step3_vlmjudge.py --process main --model <MODEL>
@@ -222,13 +251,15 @@ human_modify/val/video_<i>.json (regenerated from data/val.jsonl).
       python step3_vlmjudge.py --process process_jsonl --model <MODEL>
     Writes per-video judgments to:
       result/valresult/<MODEL>/batch_0/video_<id>/...
+    By default, a video OpenCV cannot open (e.g. a stub left by a crashed
+    script) skips the whole scenario; --per-video-errors skips only that video.
 
   Step 4 - (optional) clean empty folders
       python step4_remove_empty.py
 
   Step 5 - Compute metrics
-      # edit the count_arr list at the bottom to include your <MODEL> names
-      python step5_getresult.py
+      python step5_getresult.py --model <MODEL> [<MODEL> ...]
+      # without --model, scores the count_arr list at the bottom of the file
     Writes result/output/<MODEL>.txt with, for both Avg@8 and Pass@8:
       Executable Rate (E.R.), Render Rate (R.R.), Playable Rate (P.R.),
       Accuracy (Acc., passes all verification questions)

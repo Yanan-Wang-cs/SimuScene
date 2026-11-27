@@ -1,3 +1,4 @@
+import argparse
 import json
 import os
 import shutil
@@ -244,5 +245,8 @@ count_arr = ['DeepSeek-R1-Distill-Qwen-7B_nosys', 'deepseek-r1-distill-qwen-7b_s
 #   o3
 #   o4-mini-high]
 
+cli = argparse.ArgumentParser()
+cli.add_argument('--model', nargs='+', help='model names to score (default: the count_arr list above)')
+count_arr = cli.parse_args().model or count_arr
 for txt in count_arr:
     test_filter(txt)
